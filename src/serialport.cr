@@ -8,7 +8,9 @@ end
 
 require "./serial_ports"
 
-io = SerialPorts::Port.open "/dev/cu.usbmodem142121"
+port =  SerialPorts.list.last
+
+io = port.open
 
 io.write_byte 33u8
 

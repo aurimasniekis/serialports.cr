@@ -54,6 +54,7 @@ module SerialPorts
             PARITY_EVEN = 2
         end
 
+        property port_opened           : Bool
         property io                    : IO::FileDescriptor?
         property metadata              : PortMetadata?
 
@@ -65,11 +66,18 @@ module SerialPorts
         property interCharacterTimeout : Int32?
         property minimumReadSize       : Int32?
 
-        getter portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize, metadata
+        getter fd, portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize, metadata
 
         def self.open(portName : String, baudRate : Int32 = 9600, dataBits : Int32 = 8, stopBits : Int32 = 1, parityMode : ParityMode = ParityMode::PARITY_NONE, interCharacterTimeout : Int32 = 0, minimumReadSize : Int32 = 1)
-            instance = Driver.get_port_by_name(portName)
+            instance = new(portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize)
+            
+            instance.open
+        end
 
+
+        def self.new(portName : String, baudRate : Int32 = 9600, dataBits : Int32 = 8, stopBits : Int32 = 1, parityMode : ParityMode = ParityMode::PARITY_NONE, interCharacterTimeout : Int32 = 0, minimumReadSize : Int32 = 1)
+            instance = Driver.get_port_by_name(portName)
+            
             if instance.nil?
                 raise "SerialPort #{portName} not found."
             end
@@ -82,11 +90,26 @@ module SerialPorts
             instance.parityMode = parityMode
             instance.interCharacterTimeout = interCharacterTimeout
             instance.minimumReadSize = minimumReadSize
-            
-            instance.open
+
+            instance
         end
 
-        def initialize(@portName : String, @metadata : PortMetadata)
+        def self.new(portName : String, metadata : PortMetadata)
+            instance = Port.allocate
+            instance.portName = portName
+            instance.metadata = metadata
+            instance.baudRate = 9600
+            instance.dataBits = 8
+            instance.stopBits = 1
+            instance.parityMode = ParityMode::PARITY_NONE
+            instance.interCharacterTimeout = 0
+            instance.minimumReadSize = 1
+
+            instance
+        end
+
+        def ensure()
+            close
         end
 
         def open
@@ -104,9 +127,65 @@ module SerialPorts
             io
         end
 
+        def close
+            @io.close if @port_opened
+            Driver.close(self) if @port_opened
+        end
+
         def metadata
             @metadata
         end
 
+        def baudRate(baudRate : Int32)
+            checkIfPortOpened("baudRate")
+
+            @baudRate = baudRate
+        end
+        
+        def dataBits(dataBits : Int32)
+            checkIfPortOpened("dataBits")
+
+            @dataBits = dataBits
+        end
+        
+        def stopBits(stopBits : Int32)
+            checkIfPortOpened("stopBits")
+
+            @stopBits = stopBits
+        end
+        
+        def parityMode(parityMode : PorityMode)
+            checkIfPortOpened("parityMode")
+
+            @parityMode = parityMode
+        end
+        
+        def interCharacterTimeout(interCharacterTimeout : Int32)
+            checkIfPortOpened("interCharacterTimeout")
+
+            @interCharacterTimeout = interCharacterTimeout
+        end
+        
+        def minimumReadSize(minimumReadSize : Int32)
+            checkIfPortOpened("minimumReadSize")
+
+            @minimumReadSize = minimumReadSize
+        end
+
+        def baudRate_standard? : Bool
+            found = BaudRate.from_value? @baudRate
+
+            found.nil?
+        end
+            
+        private def checkIfPortOpened(parameter : String)
+            if port_opened
+                raise "Cant change #{parameter} parameter while SerialPort is opened"
+            end
+        end
+
+        private def initialize
+            @port_opened = false
+        end
     end
 end

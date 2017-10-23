@@ -81,6 +81,10 @@ module SerialPorts::Driver
     fd
   end
 
+  def self.close(port : Port)
+    LibC.close(port.fd)
+  end
+
   def self.list
     ports = [] of Port
     
