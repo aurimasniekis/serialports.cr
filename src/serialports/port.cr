@@ -54,6 +54,7 @@ module SerialPorts
             PARITY_EVEN = 2
         end
 
+        property io                    : IO::FileDescriptor?
         property metadata              : PortMetadata?
 
         property portName              : String?
@@ -64,7 +65,9 @@ module SerialPorts
         property interCharacterTimeout : Int32?
         property minimumReadSize       : Int32?
 
-        def self.open(portName : String, baudRate : Int32 = BaudRate::B9600, dataBits : Int32 = 8, stopBits : Int32 = 1, parityMode : ParityMode = ParityMode::PARITY_NONE, interCharacterTimeout : Int32 = 0, minimumReadSize : Int32 = 1)
+        getter portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize, metadata
+
+        def self.open(portName : String, baudRate : Int32 = 9600, dataBits : Int32 = 8, stopBits : Int32 = 1, parityMode : ParityMode = ParityMode::PARITY_NONE, interCharacterTimeout : Int32 = 0, minimumReadSize : Int32 = 1)
             instance = Driver.get_port_by_name(portName)
 
             if instance.nil?
@@ -87,6 +90,18 @@ module SerialPorts
         end
 
         def open
+            @fd = Driver.open(self)
+
+            if @fd.nil?
+                raise "Failed to open port #{portName}."
+            end
+
+            io = IO::FileDescriptor.new(@fd.as(Int32))
+            io.sync = true
+
+            @io = io
+
+            io
         end
 
         def metadata

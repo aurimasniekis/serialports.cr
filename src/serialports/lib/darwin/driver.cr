@@ -11,8 +11,8 @@ module SerialPorts::Driver
 
     termiosOption.c_cflag |= LibC::CREAD
 
-    vTime = ((configuration.interCharacterTimeout / 100).round() * 100).to_i
-    vMin = configuration.minimumReadSize
+    vTime = ((port.interCharacterTimeout.as(Int32) / 100).round() * 100).to_i
+    vMin = port.minimumReadSize.as(Int32)
 
     if vMin == 0 && vTime < 100
       raise "Invalid values for Configuration.interCharacterTimeout and Configuration.minimumReadSize"
@@ -25,10 +25,10 @@ module SerialPorts::Driver
     termiosOption.c_cc[LibC::VTIME] = (vTime / 100).to_u8
     termiosOption.c_cc[LibC::VMIN] = vMin.to_u8
 
-    termiosOption.c_ispeed = configuration.baudRate
-    termiosOption.c_ospeed = configuration.baudRate
+    termiosOption.c_ispeed = port.baudRate.as(Int32)
+    termiosOption.c_ospeed = port.baudRate.as(Int32)
 
-    case configuration.dataBits
+    case port.dataBits
     when 5
       termiosOption.c_cflag |= LibC::CS5
     when 6
@@ -41,20 +41,19 @@ module SerialPorts::Driver
       raise "Invalid value for Configuration.dataBits provided. Valid options; 5, 6, 7, 8"
     end
 
-    case configuration.stopBits
-    when 1
-    when 2
+    case port.stopBits
+    when 1,2
       termiosOption.c_cflag |= LibC::CSTOPB
     else
       raise "Invalid value for Configuration.stopBits provided. Valid options 1, 2"
     end
 
-    case configuration.parityMode
-    when ParityMode::PARITY_NONE
-    when ParityMode::PARITY_ODD
+    case port.parityMode
+    when Port::ParityMode::PARITY_NONE
+    when Port::ParityMode::PARITY_ODD
       termiosOption.c_cflag |= LibC::PARENB
       termiosOption.c_cflag |= LibC::PARODD
-    when ParityMode::PARITY_ODD
+    when Port::ParityMode::PARITY_ODD
       termiosOption.c_cflag |= LibC::PARENB
     else
       raise "InvaliInvalid value ford Configuration.parityMode provided"
@@ -63,11 +62,11 @@ module SerialPorts::Driver
     return termiosOption
   end
 
-  def self.open(port : Port)
-    fd = LibC.open(configuration.portName, LibC::O_RDWR | LibC::O_NOCTTY | LibC::O_NONBLOCK, 0o0600)
+  def self.open(port : Port) : Int32
+    fd = LibC.open(port.portName.as(String), LibC::O_RDWR | LibC::O_NOCTTY | LibC::O_NONBLOCK, 0o0600)
 
     if fd < 0
-      raise Errno.new("Error opening port '#{configuration.portName}'")
+      raise Errno.new("Error opening port '#{port.portName}'")
     end
 
     if LibC.fcntl(fd, LibC::F_SETFL, 0) == -1
@@ -75,7 +74,7 @@ module SerialPorts::Driver
     end
 
     LibC.tcgetattr(fd, out mode)
-    mode = convertOptions(mode, configuration)
+    mode = convertOptions(mode, port)
 
     LibC.tcsetattr(fd, Termios::LineControl::TCSANOW, pointerof(mode))
 
