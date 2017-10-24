@@ -82,7 +82,7 @@ module SerialPorts::Driver
   end
 
   def self.close(port : Port)
-    LibC.close(port.fd)
+    LibC.close(port.fd.as(Int32)) unless port.fd.nil?
   end
 
   def self.list

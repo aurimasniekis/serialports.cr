@@ -54,8 +54,9 @@ module SerialPorts
             PARITY_EVEN = 2
         end
 
+        @io = uninitialized IO::FileDescriptor
+
         property port_opened           : Bool
-        property io                    : IO::FileDescriptor?
         property metadata              : PortMetadata?
 
         property portName              : String?
@@ -72,6 +73,14 @@ module SerialPorts
             instance = new(portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize)
             
             instance.open
+        end
+
+        def self.open(portName : String, baudRate : Int32 = 9600, dataBits : Int32 = 8, stopBits : Int32 = 1, parityMode : ParityMode = ParityMode::PARITY_NONE, interCharacterTimeout : Int32 = 0, minimumReadSize : Int32 = 1, &block : IO::FileDescriptor, Port ->)
+            instance = new(portName, baudRate, dataBits, stopBits, parityMode, interCharacterTimeout, minimumReadSize)
+            
+            instance.open do |io, port|
+                yield io, port
+            end
         end
 
 
@@ -119,17 +128,24 @@ module SerialPorts
                 raise "Failed to open port #{portName}."
             end
 
-            io = IO::FileDescriptor.new(@fd.as(Int32))
-            io.sync = true
+            @io = IO::FileDescriptor.new(@fd.as(Int32))
+            @io.sync = true
 
-            @io = io
+            @port_opened = true
+            
+            @io
+        end
 
-            io
+        def open(&block : IO::FileDescriptor, Port ->)
+            yield open, self
+            close
         end
 
         def close
-            @io.close if @port_opened
-            Driver.close(self) if @port_opened
+            if @port_opened
+                @io.close unless @io.nil?
+                Driver.close(self)
+            end
         end
 
         def metadata

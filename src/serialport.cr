@@ -8,16 +8,14 @@ end
 
 require "./serial_ports"
 
-port =  SerialPorts.list.last
+SerialPorts::Port.open("/dev/cu.usbmodem142121") do |io, p|
+  io.write_byte 33u8
 
-io = port.open
-
-io.write_byte 33u8
-
-while true
-  puts "Reading Byte"
-  byte = io.read_byte
-  pp byte
-  puts "Sending Byte"
-  io.write_byte byte.as(UInt8) + 1u8
+  while true
+    puts "Reading Byte"
+    byte = io.read_byte
+    pp byte
+    puts "Sending Byte"
+    io.write_byte byte.as(UInt8) + 1u8
+  end
 end
