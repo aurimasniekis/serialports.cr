@@ -1,8 +1,18 @@
 require "./libiokit"
 
+lib LibC
+VTIME = 16
+O_NOCTTY = 0x20000
+end
+
+lib LibC
+  fun ioctl = ioctl(x0 : Int, x1 : Int, ...) : Int
+end
+
 lib IOKit
  KIOServicePlane = "IOService"
  KIOTTYDeviceKey = "IOTTYDevice"
+ KIOSSIOSPEED = 2148029442
 end
 
 module SerialPorts::Driver
@@ -25,8 +35,13 @@ module SerialPorts::Driver
     termiosOption.c_cc[LibC::VTIME] = (vTime / 100).to_u8
     termiosOption.c_cc[LibC::VMIN] = vMin.to_u8
 
-    termiosOption.c_ispeed = port.baudRate.as(Int32)
-    termiosOption.c_ospeed = port.baudRate.as(Int32)
+    unless port.baudRate_standard?
+      termiosOption.c_ispeed = 9600
+      termiosOption.c_ospeed = 9600
+    else
+      termiosOption.c_ispeed = port.baudRate.as(Int32)
+      termiosOption.c_ospeed = port.baudRate.as(Int32)
+    end
 
     case port.dataBits
     when 5
@@ -78,6 +93,13 @@ module SerialPorts::Driver
 
     LibC.tcsetattr(fd, Termios::LineControl::TCSANOW, pointerof(mode))
 
+    unless port.baudRate_standard?
+      buadRate = port.baudRate.as(Int32)
+      if LibC.ioctl(fd, IOKit::KIOSSIOSPEED, pointerof(buadRate)) != 0
+        raise Errno.new("ioctl() failed")
+      end
+    end
+
     fd
   end
 
@@ -110,35 +132,8 @@ module SerialPorts::Driver
 
         next if portName.nil?
         
-        IOKit.io_registry_entry_get_parent_entry(ioPort, to_s_array(IOKit::KIOServicePlane), out ioParent)
-
-        transport = "Native"
-        ioClass = registry_entry_search(ioParent, "IOClass")
-        if false == ioClass.nil? && ioClass.as(String).includes? "USB"
-          transport = "USB"
-        end
-
-        ioProviderClass = registry_entry_search(ioParent, "IOProviderClass")
-        if false == ioProviderClass.nil? && ioProviderClass.as(String).includes? "USB"
-          transport = "USB"
-        end
-
-        description = registrey_entry_multi_search(ioParent, ["USB Interface Name", "USB Product Name", "Product Name", IOKit::KIOTTYDeviceKey])
-        
-        usbBusNumber = registry_entry_search(ioParent, "USBBusNumber", :Number)
-        usbAddress = registry_entry_search(ioParent, "USB Address", :Number)
-
-        usbVid = registry_entry_search(ioParent, "idVendor", :Number)
-        usbPid = registry_entry_search(ioParent, "idProduct", :Number)
-
-        usbVendorName = registry_entry_search(ioParent, "USB Vendor Name")
-        usbProductName = registry_entry_search(ioParent, "USB Product Name")
-        usbSerialName = registry_entry_search(ioParent, "USB Serial Number")
-
-        portMetadata = PortMetadata.new(portName.as(String), transport.as(String), description.as?(String), usbVid.as?(Int32), usbPid.as?(Int32), usbVendorName.as?(String), usbProductName.as?(String), usbSerialName.as?(String))
-
+        portMetadata = port_info(portName, ioPort)
         ports << Port.new(portName, portMetadata)
-
       end
 
       IOKit.io_object_release(ioPort)
@@ -171,33 +166,7 @@ module SerialPorts::Driver
         next if portName.nil?
         next if portName != requirePortName
         
-        IOKit.io_registry_entry_get_parent_entry(ioPort, to_s_array(IOKit::KIOServicePlane), out ioParent)
-
-        transport = "Native"
-        ioClass = registry_entry_search(ioParent, "IOClass")
-        if false == ioClass.nil? && ioClass.as(String).includes? "USB"
-          transport = "USB"
-        end
-
-        ioProviderClass = registry_entry_search(ioParent, "IOProviderClass")
-        if false == ioProviderClass.nil? && ioProviderClass.as(String).includes? "USB"
-          transport = "USB"
-        end
-
-        description = registrey_entry_multi_search(ioParent, ["USB Interface Name", "USB Product Name", "Product Name", IOKit::KIOTTYDeviceKey])
-        
-        usbBusNumber = registry_entry_search(ioParent, "USBBusNumber", :Number)
-        usbAddress = registry_entry_search(ioParent, "USB Address", :Number)
-
-        usbVid = registry_entry_search(ioParent, "idVendor", :Number)
-        usbPid = registry_entry_search(ioParent, "idProduct", :Number)
-
-        usbVendorName = registry_entry_search(ioParent, "USB Vendor Name")
-        usbProductName = registry_entry_search(ioParent, "USB Product Name")
-        usbSerialName = registry_entry_search(ioParent, "USB Serial Number")
-
-        portMetadata = PortMetadata.new(portName.as(String), transport.as(String), description.as?(String), usbVid.as?(Int32), usbPid.as?(Int32), usbVendorName.as?(String), usbProductName.as?(String), usbSerialName.as?(String))
-
+        portMetadata = port_info(portName, ioPort)
         IOKit.io_object_release(ioPort)
 
         return Port.new(portName, portMetadata)
@@ -207,6 +176,35 @@ module SerialPorts::Driver
     end
 
     nil
+  end
+
+  private def self.port_info(portName : String, ioPort : IOKit::IoObjectT) : PortMetadata
+    IOKit.io_registry_entry_get_parent_entry(ioPort, to_s_array(IOKit::KIOServicePlane), out ioParent)
+    
+    transport = "Native"
+    ioClass = registry_entry_search(ioParent, "IOClass")
+    if false == ioClass.nil? && ioClass.as(String).includes? "USB"
+      transport = "USB"
+    end
+
+    ioProviderClass = registry_entry_search(ioParent, "IOProviderClass")
+    if false == ioProviderClass.nil? && ioProviderClass.as(String).includes? "USB"
+      transport = "USB"
+    end
+
+    description = registrey_entry_multi_search(ioParent, ["USB Interface Name", "USB Product Name", "Product Name", IOKit::KIOTTYDeviceKey])
+    
+    usbBusNumber = registry_entry_search(ioParent, "USBBusNumber", :Number)
+    usbAddress = registry_entry_search(ioParent, "USB Address", :Number)
+
+    usbVid = registry_entry_search(ioParent, "idVendor", :Number)
+    usbPid = registry_entry_search(ioParent, "idProduct", :Number)
+
+    usbVendorName = registry_entry_search(ioParent, "USB Vendor Name")
+    usbProductName = registry_entry_search(ioParent, "USB Product Name")
+    usbSerialName = registry_entry_search(ioParent, "USB Serial Number")
+
+    PortMetadata.new(portName.as(String), transport.as(String), description.as?(String), usbVid.as?(Int32), usbPid.as?(Int32), usbVendorName.as?(String), usbProductName.as?(String), usbSerialName.as?(String))
   end
 
   private def self.registrey_entry_multi_search(entry : IOKit::IoRegistryEntryT, propertyNames : Array(String), options = IOKit::KIoRegistryIterateRecursively | IOKit::KIoRegistryIterateParents) : String | Int32 | Nil

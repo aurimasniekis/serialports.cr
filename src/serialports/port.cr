@@ -54,7 +54,7 @@ module SerialPorts
             PARITY_EVEN = 2
         end
 
-        @io = uninitialized IO::FileDescriptor
+        property io : IO::FileDescriptor?
 
         property port_opened           : Bool
         property metadata              : PortMetadata?
@@ -124,12 +124,14 @@ module SerialPorts
         def open
             @fd = Driver.open(self)
 
+            pp @fd
+
             if @fd.nil?
                 raise "Failed to open port #{portName}."
             end
 
             @io = IO::FileDescriptor.new(@fd.as(Int32))
-            @io.sync = true
+            @io.as(IO::FileDescriptor).sync = true
 
             @port_opened = true
             
@@ -137,15 +139,19 @@ module SerialPorts
         end
 
         def open(&block : IO::FileDescriptor, Port ->)
-            yield open, self
+            yield open.as(IO::FileDescriptor), self
             close
         end
 
         def close
             if @port_opened
-                @io.close unless @io.nil?
+                @io.as(IO::FileDescriptor).close unless @io.nil?
                 Driver.close(self)
             end
+        end
+
+        private def io
+            @io
         end
 
         def metadata
@@ -191,7 +197,7 @@ module SerialPorts
         def baudRate_standard? : Bool
             found = BaudRate.from_value? @baudRate
 
-            found.nil?
+            !found.nil?
         end
             
         private def checkIfPortOpened(parameter : String)
@@ -202,6 +208,7 @@ module SerialPorts
 
         private def initialize
             @port_opened = false
+            @io = nil
         end
     end
 end
